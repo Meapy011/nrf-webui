@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SuperMini Air Monitor</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <style>
+        .metric-card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 1rem;
+            padding: 1.5rem;
+            transition: all 0.3s ease;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans">
+
+    <div class="max-w-4xl mx-auto px-4 py-8">
+        <header class="flex flex-col sm:flex-row justify-between items-center border-b border-slate-700 pb-6 mb-8 gap-4">
+            <div>
+                <h1 class="text-3xl font-bold tracking-tight text-emerald-400">SEN69C Environmental Monitor</h1>
+                <p class="text-slate-400 text-sm mt-1">SuperMini nRF52840 Bluetooth Dashboard</p>
+            </div>
+            <button id="connectBtn" class="bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-semibold px-6 py-3 rounded-xl transition shadow-lg shadow-emerald-500/20 cursor-pointer">
+                Connect Device
+            </button>
+        </header>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+            
+            <div class="metric-card md:col-span-3 border-l-4 border-cyan-500">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-cyan-400 mb-4">Particulate Matter (µg/m³)</h3>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div><span class="text-slate-400 text-xs block">PM 1.0</span><span id="pm1" class="text-2xl font-semibold">--</span></div>
+                    <div><span class="text-slate-400 text-xs block">PM 2.5</span><span id="pm25" class="text-2xl font-semibold text-cyan-300">--</span></div>
+                    <div><span class="text-slate-400 text-xs block">PM 4.0</span><span id="pm4" class="text-2xl font-semibold">--</span></div>
+                    <div><span class="text-slate-400 text-xs block">PM 10.0</span><span id="pm10" class="text-2xl font-semibold">--</span></div>
+                </div>
+            </div>
+
+            <div class="metric-card border-l-4 border-amber-500">
+                <span class="text-xs font-bold uppercase tracking-wider text-amber-400 block mb-1">Carbon Dioxide</span>
+                <span id="co2" class="text-4xl font-extrabold block my-2">--</span>
+                <span class="text-xs text-slate-400">PPM</span>
+            </div>
+
+            <div class="metric-card border-l-4 border-red-500">
+                <span class="text-xs font-bold uppercase tracking-wider text-red-400 block mb-1">Formaldehyde (HCHO)</span>
+                <span id="hcho" class="text-4xl font-extrabold block my-2">--</span>
+                <span class="text-xs text-slate-400">PPB</span>
+            </div>
+
+            <div class="metric-card border-l-4 border-emerald-500">
+                <span class="text-xs font-bold uppercase tracking-wider text-emerald-400 block mb-1">Temperature</span>
+                <span id="temp" class="text-4xl font-extrabold block my-2">--</span>
+                <span class="text-xs text-slate-400">°C</span>
+            </div>
+
+            <div class="metric-card border-l-4 border-blue-500">
+                <span class="text-xs font-bold uppercase tracking-wider text-blue-400 block mb-1">Relative Humidity</span>
+                <span id="humidity" class="text-4xl font-extrabold block my-2">--</span>
+                <span class="text-xs text-slate-400">% RH</span>
+            </div>
+
+            <div class="metric-card border-l-4 border-purple-500">
+                <span class="text-xs font-bold uppercase tracking-wider text-purple-400 block mb-1">VOC Index</span>
+                <span id="voc" class="text-4xl font-extrabold block my-2">--</span>
+                <span class="text-xs text-slate-400">1 - 500</span>
+            </div>
+
+            <div class="metric-card border-l-4 border-indigo-500">
+                <span class="text-xs font-bold uppercase tracking-wider text-indigo-400 block mb-1">NOx Index</span>
+                <span id="nox" class="text-4xl font-extrabold block my-2">--</span>
+                <span class="text-xs text-slate-400">1 - 500</span>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // Standard Nordic UART Service (NUS) UUIDs matching your firmware code
+        const UART_SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+        const TX_CHARACTERISTIC_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+
+        const connectBtn = document.getElementById('connectBtn');
+        let bleDevice = null;
+
+        connectBtn.addEventListener('click', async () => {
+            if (bleDevice && bleDevice.gatt.connected) {
+                await bleDevice.gatt.disconnect();
+                updateConnectionState(false);
+                return;
+            }
+
+            try {
+                // Scan and filter specifically for your device
+                bleDevice = await navigator.bluetooth.requestDevice({
+                    filters: [{ name: 'SuperMini Air Monitor' }],
+                    optionalServices: [UART_SERVICE_UUID]
+                });
+
+                const server = await bleDevice.gatt.connect();
+                const service = await server.getPrimaryService(UART_SERVICE_UUID);
+                const characteristic = await service.getCharacteristic(TX_CHARACTERISTIC_UUID);
+
+                // Start listening to the comma-separated data data stream
+                await characteristic.startNotifications();
+                characteristic.addEventListener('characteristicvaluechanged', handleDataStream);
+                
+                updateConnectionState(true);
+
+                bleDevice.addEventListener('gattserverdisconnected', () => {
+                    updateConnectionState(false);
+                });
+
+            } catch (error) {
+                console.error("Bluetooth pairing rejected/failed:", error);
+                alert("Connection failed. Check console or make sure device isn't paired elsewhere.");
+            }
+        });
+
+        function handleDataStream(event) {
+            // Decode the raw incoming binary buffer into a readable string
+            const decoder = new TextDecoder('utf-8');
+            const rawString = decoder.decode(event.target.value).trim();
+            
+            // Your loop outputs comma-separated metrics: PM1,PM2.5,PM4,PM10,Hum,Temp,VOC,NOx,HCHO,CO2
+            const metrics = rawString.split(',');
+
+            // Verify packet integrity to avoid shifting data indices on partial strings
+            if (metrics.length >= 10) {
+                document.getElementById('pm1').innerText      = metrics[0];
+                document.getElementById('pm25').innerText     = metrics[1];
+                document.getElementById('pm4').innerText      = metrics[2];
+                document.getElementById('pm10').innerText     = metrics[3];
+                document.getElementById('humidity').innerText = metrics[4];
+                document.getElementById('temp').innerText     = metrics[5];
+                document.getElementById('voc').innerText      = metrics[6];
+                document.getElementById('nox').innerText      = metrics[7];
+                document.getElementById('hcho').innerText     = metrics[8];
+                document.getElementById('co2').innerText      = metrics[9];
+                
+                // Bonus Logic: Dynamically flag dangerous CO2 environments!
+                const co2Val = parseInt(metrics[9]);
+                const co2Card = document.getElementById('co2').parentElement;
+                if (co2Val > 1000) {
+                    co2Card.style.borderColor = '#ef4444'; // Red alarm
+                } else {
+                    co2Card.style.borderColor = '#f59e0b'; // Restores amber default
+                }
+            }
+        }
+
+        function updateConnectionState(isConnected) {
+            if (isConnected) {
+                connectBtn.innerText = "Disconnect";
+                connectBtn.classList.replace('bg-emerald-500', 'bg-red-500');
+                connectBtn.classList.replace('hover:bg-emerald-600', 'hover:bg-red-600');
+            } else {
+                connectBtn.innerText = "Connect Device";
+                connectBtn.classList.replace('bg-red-500', 'bg-emerald-500');
+                connectBtn.classList.replace('hover:bg-red-600', 'hover:bg-emerald-600');
+            }
+        }
+    </script>
+</body>
+</html>
