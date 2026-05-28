@@ -80,88 +80,117 @@
     </div>
 
     <script>
-        // Standard Nordic UART Service (NUS) UUIDs matching your firmware code
+        // Strict lowercase specifications matching target Nordic NUS topologies
         const UART_SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
         const TX_CHARACTERISTIC_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
 
         const connectBtn = document.getElementById('connectBtn');
         let bleDevice = null;
+        let dataBuffer = ""; 
 
         connectBtn.addEventListener('click', async () => {
+            // Teardown process if user clicks disconnect manually
             if (bleDevice && bleDevice.gatt.connected) {
-                await bleDevice.gatt.disconnect();
+                try {
+                    await bleDevice.gatt.disconnect();
+                } catch(e) {
+                    console.log("Disconnect cleanup capture:", e);
+                }
                 updateConnectionState(false);
                 return;
             }
 
             try {
-                // Scan and filter specifically for your device
+                console.log("Initializing Web Bluetooth handshake...");
+                
+                // Explicit target routing parameters
                 bleDevice = await navigator.bluetooth.requestDevice({
                     filters: [{ name: 'SuperMini Air Monitor' }],
                     optionalServices: [UART_SERVICE_UUID]
                 });
 
+                updateConnectionState('connecting');
+
+                console.log("Binding peripheral GATT abstraction server...");
                 const server = await bleDevice.gatt.connect();
+                
+                console.log("Locating primary UART communication lines...");
                 const service = await server.getPrimaryService(UART_SERVICE_UUID);
+                
+                console.log("Resolving TX notification stream handle...");
                 const characteristic = await service.getCharacteristic(TX_CHARACTERISTIC_UUID);
 
-                // Start listening to the comma-separated data data stream
+                console.log("Configuring operational descriptors...");
                 await characteristic.startNotifications();
                 characteristic.addEventListener('characteristicvaluechanged', handleDataStream);
                 
                 updateConnectionState(true);
 
                 bleDevice.addEventListener('gattserverdisconnected', () => {
+                    console.log("Remote signal severed.");
                     updateConnectionState(false);
                 });
 
             } catch (error) {
-                console.error("Bluetooth pairing rejected/failed:", error);
-                alert("Connection failed. Check console or make sure device isn't paired elsewhere.");
+                console.error("Connection workflow halted:", error);
+                updateConnectionState(false);
+                alert("BLE Setup Error: " + error.message);
             }
         });
 
         function handleDataStream(event) {
-            // Decode the raw incoming binary buffer into a readable string
             const decoder = new TextDecoder('utf-8');
-            const rawString = decoder.decode(event.target.value).trim();
+            const rawChunk = decoder.decode(event.target.value);
             
-            // Your loop outputs comma-separated metrics: PM1,PM2.5,PM4,PM10,Hum,Temp,VOC,NOx,HCHO,CO2
-            const metrics = rawString.split(',');
+            // Accumulate asynchronous data fragments to protect array indexing integrity
+            dataBuffer += rawChunk;
 
-            // Verify packet integrity to avoid shifting data indices on partial strings
-            if (metrics.length >= 10) {
-                document.getElementById('pm1').innerText      = metrics[0];
-                document.getElementById('pm25').innerText     = metrics[1];
-                document.getElementById('pm4').innerText      = metrics[2];
-                document.getElementById('pm10').innerText     = metrics[3];
-                document.getElementById('humidity').innerText = metrics[4];
-                document.getElementById('temp').innerText     = metrics[5];
-                document.getElementById('voc').innerText      = metrics[6];
-                document.getElementById('nox').innerText      = metrics[7];
-                document.getElementById('hcho').innerText     = metrics[8];
-                document.getElementById('co2').innerText      = metrics[9];
-                
-                // Bonus Logic: Dynamically flag dangerous CO2 environments!
-                const co2Val = parseInt(metrics[9]);
-                const co2Card = document.getElementById('co2').parentElement;
-                if (co2Val > 1000) {
-                    co2Card.style.borderColor = '#ef4444'; // Red alarm
-                } else {
-                    co2Card.style.borderColor = '#f59e0b'; // Restores amber default
+            // Process only when a complete newline termination element is encountered
+            if (dataBuffer.includes('\n')) {
+                const lines = dataBuffer.split('\n');
+                const completeLine = lines[0].trim();
+                dataBuffer = lines.slice(1).join('\n');
+
+                const metrics = completeLine.split(',');
+
+                // Validates array formatting boundaries (Indices 0 through 9 matching firmware layout)
+                if (metrics.length >= 10) {
+                    document.getElementById('pm1').innerText      = metrics[0];
+                    document.getElementById('pm25').innerText     = metrics[1];
+                    document.getElementById('pm4').innerText      = metrics[2];
+                    document.getElementById('pm10').innerText     = metrics[3];
+                    document.getElementById('humidity').innerText = metrics[4];
+                    document.getElementById('temp').innerText     = metrics[5];
+                    document.getElementById('voc').innerText      = metrics[6];
+                    document.getElementById('nox').innerText      = metrics[7];
+                    document.getElementById('hcho').innerText     = metrics[8];
+                    document.getElementById('co2').innerText      = metrics[9];
+                    
+                    // Simple programmatic environmental safety threshold indicator shifts
+                    const co2Val = parseInt(metrics[9]);
+                    const co2Card = document.getElementById('co2').parentElement;
+                    if (co2Val > 1000) {
+                        co2Card.style.borderColor = '#ef4444'; // Red threshold warning
+                    } else {
+                        co2Card.style.borderColor = '#f59e0b'; // Restores default Amber styling
+                    }
                 }
             }
         }
 
-        function updateConnectionState(isConnected) {
-            if (isConnected) {
+        function updateConnectionState(state) {
+            if (state === true) {
                 connectBtn.innerText = "Disconnect";
-                connectBtn.classList.replace('bg-emerald-500', 'bg-red-500');
-                connectBtn.classList.replace('hover:bg-emerald-600', 'hover:bg-red-600');
+                connectBtn.classList.remove('bg-emerald-500', 'bg-amber-500', 'hover:bg-emerald-600', 'hover:bg-amber-600');
+                connectBtn.classList.add('bg-red-500', 'hover:bg-red-600');
+            } else if (state === 'connecting') {
+                connectBtn.innerText = "Connecting...";
+                connectBtn.classList.remove('bg-emerald-500', 'bg-red-500', 'hover:bg-emerald-600', 'hover:bg-red-600');
+                connectBtn.classList.add('bg-amber-500', 'hover:bg-amber-600');
             } else {
                 connectBtn.innerText = "Connect Device";
-                connectBtn.classList.replace('bg-red-500', 'bg-emerald-500');
-                connectBtn.classList.replace('hover:bg-red-600', 'hover:bg-emerald-600');
+                connectBtn.classList.remove('bg-red-500', 'bg-amber-500', 'hover:bg-red-600', 'hover:bg-amber-600');
+                connectBtn.classList.add('bg-emerald-500', 'hover:bg-emerald-600');
             }
         }
     </script>
