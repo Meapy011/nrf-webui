@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Air Monitor Dashboard</title>
-    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .metric-card {
             background-color: #1e293b;
@@ -18,7 +18,7 @@
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen font-sans">
 
-    <header class="border-b border-slate-800 bg-slate-900/50 backdrop-blur px-6 py-4 flex flex-wrap items-center justify-between gap-4">
+    <header class="border-b border-slate-800 bg-slate-900/50 backdrop-blur px-6 py-4 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-50">
         <div class="flex items-center gap-3">
             <div class="h-3 w-3 rounded-full bg-red-500 animate-pulse" id="status-dot"></div>
             <h1 class="text-xl font-bold tracking-tight">Air Monitor Dashboard</h1>
@@ -26,8 +26,9 @@
         
         <div class="flex items-center gap-3">
             <select id="device-model" class="bg-slate-800 border border-slate-700 text-slate-200 text-sm font-medium rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2 outline-none cursor-pointer transition">
-                <option value="atmos">Atmos-Sphere (SCD30, SEN44, SFA3X)</option>
-                <option value="nano">Air-Nano (SEN69C)</option>
+                <option value="atmos-s4">Atmos-Sphere-s4 (SCD30 + SEN44 + SFA3X)</option>
+                <option value="atmos-s5">Atmos-Sphere-s5 (SCD30 + SEN55 + SFA3X)</option>
+                <option value="mini">Atmos-Mini (SEN69C)</option>
             </select>
 
             <button id="btn-connect" class="bg-blue-600 hover:bg-blue-500 text-white font-medium px-4 py-2 rounded-lg text-sm transition shadow-lg shadow-blue-600/20 cursor-pointer">
@@ -110,7 +111,7 @@
         let bluetoothDevice = null;
         let txCharacteristic = null;
         let dataBuffer = "";
-        let expectedDeviceName = "Atmos-Sphere";
+        let expectedDeviceName = "Atmos-Sphere-s4";
         
         // CSV In-Memory Logging Array
         const csvRecords = [];
@@ -140,11 +141,14 @@
 
         // Device Model Selector Logic
         deviceModelDrop.addEventListener('change', function() {
-            if (this.value === 'nano') {
-                expectedDeviceName = "Air-Nano";
+            if (this.value === 'mini') {
+                expectedDeviceName = "Atmos-Mini";
                 cardNox.style.display = 'block'; // SEN69C has NOx
+            } else if (this.value === 'atmos-s5') {
+                expectedDeviceName = "Atmos-Sphere-s5";
+                cardNox.style.display = 'block'; // SEN55 has NOx
             } else {
-                expectedDeviceName = "Atmos-Sphere";
+                expectedDeviceName = "Atmos-Sphere-s4";
                 cardNox.style.display = 'none';  // SEN44 lacks NOx
             }
             
@@ -175,6 +179,7 @@
                 btnConnect.textContent = "Searching...";
                 btnConnect.disabled = true;
 
+                // Make sure we are filtering by the exact name selected in the dropdown
                 bluetoothDevice = await navigator.bluetooth.requestDevice({
                     filters: [{ name: expectedDeviceName }],
                     optionalServices: [UART_SERVICE_UUID]
