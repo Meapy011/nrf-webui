@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Air Monitor Dashboard</title>
+    <title>SuperMini Air Monitor Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <style>
         .metric-card {
@@ -21,15 +21,9 @@
     <header class="border-b border-slate-800 bg-slate-900/50 backdrop-blur px-6 py-4 flex flex-wrap items-center justify-between gap-4">
         <div class="flex items-center gap-3">
             <div class="h-3 w-3 rounded-full bg-red-500 animate-pulse" id="status-dot"></div>
-            <h1 class="text-xl font-bold tracking-tight">Air Monitor Dashboard</h1>
+            <h1 class="text-xl font-bold tracking-tight">SuperMini Air Monitor</h1>
         </div>
-        
         <div class="flex items-center gap-3">
-            <select id="device-model" class="bg-slate-800 border border-slate-700 text-slate-200 text-sm font-medium rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2 outline-none cursor-pointer transition">
-                <option value="atmos">Atmos-Sphere (SCD30, SEN44, SFA3X)</option>
-                <option value="nano">Air-Nano (SEN69C)</option>
-            </select>
-
             <button id="btn-connect" class="bg-blue-600 hover:bg-blue-500 text-white font-medium px-4 py-2 rounded-lg text-sm transition shadow-lg shadow-blue-600/20 cursor-pointer">
                 Connect Device
             </button>
@@ -86,7 +80,7 @@
                 <div class="text-xs font-medium text-purple-400">VOC Index</div>
                 <div class="text-2xl font-bold mt-1" id="val-voc">---</div>
             </div>
-            <div id="card-nox" class="metric-card rounded-xl p-4">
+            <div class="metric-card rounded-xl p-4">
                 <div class="text-xs font-medium text-purple-400">NOx Index</div>
                 <div class="text-2xl font-bold mt-1" id="val-nox">---</div>
             </div>
@@ -110,7 +104,6 @@
         let bluetoothDevice = null;
         let txCharacteristic = null;
         let dataBuffer = "";
-        let expectedDeviceName = "Atmos-Sphere";
         
         // CSV In-Memory Logging Array
         const csvRecords = [];
@@ -120,8 +113,6 @@
         const btnExport  = document.getElementById('btn-export');
         const logCount   = document.getElementById('log-count');
         const statusDot  = document.getElementById('status-dot');
-        const deviceModelDrop = document.getElementById('device-model');
-        const cardNox = document.getElementById('card-nox');
 
         // Target Value Containers
         const fields = {
@@ -137,25 +128,6 @@
             co2:  document.getElementById('val-co2')
         };
         const badgeCo2 = document.getElementById('badge-co2');
-
-        // Device Model Selector Logic
-        deviceModelDrop.addEventListener('change', function() {
-            if (this.value === 'nano') {
-                expectedDeviceName = "Air-Nano";
-                cardNox.style.display = 'block'; // SEN69C has NOx
-            } else {
-                expectedDeviceName = "Atmos-Sphere";
-                cardNox.style.display = 'none';  // SEN44 lacks NOx
-            }
-            
-            // Disconnect if we switch models while connected
-            if (bluetoothDevice && bluetoothDevice.gatt.connected) {
-                terminateBleConnection();
-            }
-        });
-        
-        // Initialize layout on page load
-        deviceModelDrop.dispatchEvent(new Event('change'));
 
         // Connect/Disconnect Toggle Event Handler
         btnConnect.addEventListener('click', () => {
@@ -173,10 +145,9 @@
             try {
                 statusDot.className = "h-3 w-3 rounded-full bg-amber-500 animate-pulse";
                 btnConnect.textContent = "Searching...";
-                btnConnect.disabled = true;
 
                 bluetoothDevice = await navigator.bluetooth.requestDevice({
-                    filters: [{ name: expectedDeviceName }],
+                    filters: [{ name: 'SuperMini Air Monitor' }],
                     optionalServices: [UART_SERVICE_UUID]
                 });
 
@@ -193,10 +164,6 @@
                 statusDot.className = "h-3 w-3 rounded-full bg-green-500";
                 btnConnect.className = "bg-red-600 hover:bg-red-500 text-white font-medium px-4 py-2 rounded-lg text-sm transition cursor-pointer";
                 btnConnect.textContent = "Disconnect";
-                btnConnect.disabled = false;
-                deviceModelDrop.disabled = true; // Prevent switching while connected
-                deviceModelDrop.classList.add("opacity-50");
-                
                 badgeCo2.className = "absolute top-6 right-6 px-2.5 py-1 text-xs font-bold rounded-full bg-green-950 text-green-400";
                 badgeCo2.textContent = "Normal";
 
@@ -223,10 +190,6 @@
             statusDot.className = "h-3 w-3 rounded-full bg-red-500 animate-pulse";
             btnConnect.className = "bg-blue-600 hover:bg-blue-500 text-white font-medium px-4 py-2 rounded-lg text-sm transition shadow-lg shadow-blue-600/20 cursor-pointer";
             btnConnect.textContent = "Connect Device";
-            btnConnect.disabled = false;
-            deviceModelDrop.disabled = false;
-            deviceModelDrop.classList.remove("opacity-50");
-            
             badgeCo2.className = "absolute top-6 right-6 px-2.5 py-1 text-xs font-bold rounded-full bg-slate-800 text-slate-400";
             badgeCo2.textContent = "Offline";
             
@@ -327,7 +290,7 @@
             
             const timestampStr = new Date().toISOString().replace(/[:.]/g, "-").substring(0, 19);
             link.setAttribute("href", url);
-            link.setAttribute("download", `${expectedDeviceName.toLowerCase()}_log_${timestampStr}.csv`);
+            link.setAttribute("download", `air_monitor_log_${timestampStr}.csv`);
             link.style.visibility = 'hidden';
             
             document.body.appendChild(link);
